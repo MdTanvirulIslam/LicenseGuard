@@ -22,6 +22,7 @@ return [
     // Domains treated as local for the is_local payload flag (does NOT bypass API calls).
     // Entries starting with a leading dot are suffix-matched (e.g. '.test' matches
     // 'myapp.test'); all other entries are matched exactly (case-insensitive).
+    // Mirrors the license server's own config/license.php local_domains/local_suffixes.
     'local_domains' => [
         'localhost',
         '127.0.0.1',
@@ -29,6 +30,7 @@ return [
         '.test',
         '.local',
         '.dev',
+        '.example',
     ],
 
     'http' => [

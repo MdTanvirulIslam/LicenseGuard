@@ -28,7 +28,7 @@ Set these in the target app's `.env` before handover (see `.env.example` in this
 |---|---|---|
 | `server_url` | `LICENSE_SERVER_URL` | Base URL of the License Manager server |
 | `license_key` | `LICENSE_KEY` | Per-customer license key |
-| `secret` | `LICENSE_SECRET` | Shared HMAC secret used to verify server-issued tokens |
+| `secret` | `LICENSE_SECRET` | The product's secret key — sent as `Authorization: Bearer` on every API call, and used to verify server-issued tokens locally |
 | `check_interval_hours` | `LICENSE_CHECK_INTERVAL_HOURS` | Heartbeat throttle interval |
 | `grace_period_hours` | `LICENSE_GRACE_PERIOD_HOURS` | How long a locally-cached, valid token is trusted offline |
 | `bypass_local` | `LICENSE_BYPASS_LOCAL` | Vendor dev-machine-only bypass |
@@ -74,26 +74,43 @@ php artisan license:status --fresh   # force a live server recheck
 
 ## Local Development
 
-Set `LICENSE_BYPASS_LOCAL=true` in your own `.env` only. Any domain matching `local_domains` (default: `localhost`, `127.0.0.1`, `::1`, `*.test`, `*.local`, `*.dev`) is still checked against the server as normal when bypass is off — it just sends `is_local: true` in the request payload so the server doesn't consume a domain slot for it.
+Set `LICENSE_BYPASS_LOCAL=true` in your own `.env` only. Any domain matching `local_domains` (default: `localhost`, `127.0.0.1`, `::1`, `*.test`, `*.local`, `*.dev`, `*.example`) is still checked against the server as normal when bypass is off — it just sends `is_local: true` in the request payload so the server doesn't consume a domain slot for it.
 
 ## Server Contract
 
-Both `/api/license/activate` and `/api/license/verify` accept:
+Every request is authenticated with `Authorization: Bearer {LICENSE_SECRET}` (the product's secret key).
+
+`POST /api/license/activate` accepts:
 
 ```json
 {"license_key": "...", "domain": "example.com", "is_local": false}
 ```
 
-And return:
+`POST /api/license/verify` accepts (the previously issued token is echoed back once one exists):
+
+```json
+{"license_key": "...", "domain": "example.com", "token": "<payload>.<signature>"}
+```
+
+Both endpoints return the same shape on success:
 
 ```json
 {
-    "success": true,
-    "payload": "<base64 JSON: license_key, domain, is_local, status, issued_at, expires_at>",
-    "signature": "<base64 HMAC-SHA256 of the base64 payload string, using the shared secret>",
-    "status": "active"
+    "valid": true,
+    "token": "<base64 payload>.<base64 HMAC-SHA256 signature>",
+    "message": "License verified.",
+    "expires_at": "2026-07-03T12:00:00.000000Z",
+    "is_local": false
 }
 ```
+
+or on failure (suspended/expired/domain limit/unreachable/etc — no token is ever issued on failure):
+
+```json
+{"valid": false, "token": null, "message": "License is suspended.", "expires_at": null, "is_local": false}
+```
+
+The `token` is two dot-separated parts: `base64(json_encode(['license_id' => ..., 'domain' => ..., 'exp' => <unix timestamp>]))`, and a signature computed as `base64(hash_hmac('sha256', $base64Payload, $secret, true))` — the HMAC is over the base64 payload string, not the raw JSON. `TokenValidator::isValid()` verifies the signature and checks `exp` hasn't passed; `LicenseChecker` additionally checks the payload's `domain` claim matches the current request's domain before trusting a cached token.
 
 ## Release Process
 

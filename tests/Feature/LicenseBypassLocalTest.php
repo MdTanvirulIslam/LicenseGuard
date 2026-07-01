@@ -55,7 +55,7 @@ class LicenseBypassLocalTest extends TestCase
     {
         config()->set('license-guard.bypass_local', true);
         $this->bindRequestHost('example.com');
-        Http::fake(['*' => Http::response(['success' => false], 500)]);
+        Http::fake(['*' => Http::response($this->fakeFailureResponse(), 500)]);
 
         $this->app->make(BootLicenseGuard::class)->handle();
 

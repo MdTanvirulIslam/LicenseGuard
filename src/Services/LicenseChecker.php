@@ -31,15 +31,11 @@ class LicenseChecker implements LicenseCheckerInterface
 
         $cache = $this->cacheRow();
 
-        if ($cache === null || $cache->status !== 'active') {
+        if ($cache === null || $cache->token === null || $cache->signature === null) {
             return $this->forceVerify();
         }
 
-        if ($cache->token === null || $cache->signature === null) {
-            return $this->forceVerify();
-        }
-
-        if (! $this->validator->isValid($cache->token, $cache->signature)) {
+        if (! $this->isCachedTokenValid($cache)) {
             return $this->forceVerify();
         }
 
@@ -61,40 +57,44 @@ class LicenseChecker implements LicenseCheckerInterface
 
         $domain = $this->currentDomain();
         $isLocal = $this->isLocalDomain();
-        $hadCache = $this->cacheRow() !== null;
+        $cache = $this->cacheRow();
 
-        $response = $hadCache
-            ? $this->client->verify($domain, $isLocal)
-            : $this->client->activate($domain, $isLocal);
+        $currentToken = ($cache?->token !== null && $cache?->signature !== null)
+            ? $cache->token.'.'.$cache->signature
+            : null;
 
-        if (! $response->success || $response->token === null || $response->signature === null) {
-            // Transport/server failure: leave any prior known-good state untouched
-            // so the grace period keeps counting from the last successful check.
+        // The server only issues a fresh token via /activate the first time a
+        // domain is seen; every subsequent check re-pings /verify with the
+        // previously issued token.
+        $response = $currentToken === null
+            ? $this->client->activate($domain, $isLocal)
+            : $this->client->verify($domain, $currentToken);
+
+        // The server never returns a token on failure (suspended, expired,
+        // domain limit, unreachable, etc.) -- so any missing token is
+        // fail-closed, and we leave any prior known-good cache row untouched.
+        if (! $response->success || $response->token === null) {
             return false;
         }
 
-        if (! $this->validator->verifySignature($response->token, $response->signature)) {
-            // Untrusted/tampered payload: do not persist anything from it.
+        $split = TokenValidator::split($response->token);
+
+        if ($split === null) {
             return false;
         }
 
-        $isTokenValid = $this->validator->isValid($response->token, $response->signature);
-        $status = $response->status ?? ($this->validator->decode($response->token)['status'] ?? 'unknown');
+        if (! $this->tokenIsValidForDomain($split['payload'], $split['signature'], $domain)) {
+            return false;
+        }
 
-        $attributes = [
-            'token' => $response->token,
-            'signature' => $response->signature,
-            'status' => $status,
+        LicenseCache::query()->updateOrCreate(['domain' => $domain], [
+            'token' => $split['payload'],
+            'signature' => $split['signature'],
             'is_local' => $isLocal,
-        ];
+            'last_checked_at' => now(),
+        ]);
 
-        if ($isTokenValid) {
-            $attributes['last_checked_at'] = now();
-        }
-
-        LicenseCache::query()->updateOrCreate(['domain' => $domain], $attributes);
-
-        return $isTokenValid;
+        return true;
     }
 
     public function currentDomain(): string
@@ -115,6 +115,21 @@ class LicenseChecker implements LicenseCheckerInterface
     public function lastCheckedAt(): ?Carbon
     {
         return $this->cacheRow()?->last_checked_at;
+    }
+
+    private function isCachedTokenValid(LicenseCache $cache): bool
+    {
+        return $this->tokenIsValidForDomain($cache->token, $cache->signature, $this->currentDomain());
+    }
+
+    /** Signature integrity + expiry + domain-binding (a token issued for one domain must not validate for another). */
+    private function tokenIsValidForDomain(string $payload, string $signature, string $domain): bool
+    {
+        if (! $this->validator->isValid($payload, $signature)) {
+            return false;
+        }
+
+        return ($this->validator->decode($payload)['domain'] ?? null) === $domain;
     }
 
     private function cacheRow(): ?LicenseCache

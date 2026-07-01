@@ -7,8 +7,8 @@ class LicenseServerResponse
     public function __construct(
         public readonly bool $success,
         public readonly ?string $token = null,
-        public readonly ?string $signature = null,
-        public readonly ?string $status = null,
+        public readonly ?string $expiresAt = null,
+        public readonly ?bool $isLocal = null,
         public readonly ?string $message = null,
     ) {
     }

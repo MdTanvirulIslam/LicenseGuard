@@ -12,18 +12,15 @@ class TokenValidatorTest extends TestCase
     private function payloadFor(array $overrides = []): string
     {
         $claims = array_merge([
-            'license_key' => 'ABC-123',
+            'license_id' => 1,
             'domain' => 'example.com',
-            'is_local' => false,
-            'status' => 'active',
-            'issued_at' => now()->subDay()->timestamp,
-            'expires_at' => now()->addDays(30)->timestamp,
+            'exp' => now()->addDays(30)->timestamp,
         ], $overrides);
 
         return base64_encode(json_encode($claims));
     }
 
-    public function test_valid_signature_active_status_future_expiry_is_valid(): void
+    public function test_valid_signature_and_future_expiry_is_valid(): void
     {
         $validator = new TokenValidator(self::SECRET);
         $payload = $this->payloadFor();
@@ -37,9 +34,7 @@ class TokenValidatorTest extends TestCase
         $payload = $this->payloadFor();
         $signature = $validator->sign($payload);
 
-        $tampered = $payload.'x';
-
-        $this->assertFalse($validator->isValid($tampered, $signature));
+        $this->assertFalse($validator->isValid($payload.'x', $signature));
     }
 
     public function test_tampered_signature_is_invalid(): void
@@ -59,26 +54,18 @@ class TokenValidatorTest extends TestCase
         $this->assertFalse($validator->isValid($payload, $signer->sign($payload)));
     }
 
-    public function test_suspended_status_is_invalid_even_with_valid_signature(): void
+    public function test_past_exp_is_invalid_even_with_valid_signature(): void
     {
         $validator = new TokenValidator(self::SECRET);
-        $payload = $this->payloadFor(['status' => 'suspended']);
+        $payload = $this->payloadFor(['exp' => now()->subDay()->timestamp]);
 
         $this->assertFalse($validator->isValid($payload, $validator->sign($payload)));
     }
 
-    public function test_expired_status_is_invalid_even_with_valid_signature(): void
+    public function test_missing_exp_claim_is_invalid(): void
     {
         $validator = new TokenValidator(self::SECRET);
-        $payload = $this->payloadFor(['status' => 'expired']);
-
-        $this->assertFalse($validator->isValid($payload, $validator->sign($payload)));
-    }
-
-    public function test_past_expires_at_is_invalid_even_with_active_status(): void
-    {
-        $validator = new TokenValidator(self::SECRET);
-        $payload = $this->payloadFor(['expires_at' => now()->subDay()->timestamp]);
+        $payload = base64_encode(json_encode(['license_id' => 1, 'domain' => 'example.com']));
 
         $this->assertFalse($validator->isValid($payload, $validator->sign($payload)));
     }
@@ -94,8 +81,25 @@ class TokenValidatorTest extends TestCase
     public function test_decode_returns_expected_claims_for_known_good_payload(): void
     {
         $validator = new TokenValidator(self::SECRET);
-        $payload = $this->payloadFor(['license_key' => 'XYZ-999']);
+        $payload = $this->payloadFor(['license_id' => 42, 'domain' => 'myapp.test']);
 
-        $this->assertSame('XYZ-999', $validator->decode($payload)['license_key']);
+        $decoded = $validator->decode($payload);
+
+        $this->assertSame(42, $decoded['license_id']);
+        $this->assertSame('myapp.test', $decoded['domain']);
+    }
+
+    public function test_split_parses_combined_payload_dot_signature_token(): void
+    {
+        $result = TokenValidator::split('cGF5bG9hZA==.c2lnbmF0dXJl');
+
+        $this->assertSame(['payload' => 'cGF5bG9hZA==', 'signature' => 'c2lnbmF0dXJl'], $result);
+    }
+
+    public function test_split_returns_null_for_malformed_token(): void
+    {
+        $this->assertNull(TokenValidator::split('no-dot-here'));
+        $this->assertNull(TokenValidator::split('.missing-payload'));
+        $this->assertNull(TokenValidator::split('missing-signature.'));
     }
 }

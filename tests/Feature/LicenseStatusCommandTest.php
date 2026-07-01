@@ -43,7 +43,7 @@ class LicenseStatusCommandTest extends TestCase
     public function test_exit_code_is_failure_when_invalid(): void
     {
         $this->app->instance(Request::class, Request::create('http://example.com/'));
-        Http::fake(['*' => Http::response(['success' => false], 500)]);
+        Http::fake(['*' => Http::response($this->fakeFailureResponse(), 500)]);
 
         $this->artisan('license:status')->assertExitCode(1);
     }

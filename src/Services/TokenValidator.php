@@ -12,7 +12,9 @@ class TokenValidator
 
     /**
      * Verifies a base64-encoded payload against its base64-encoded HMAC-SHA256
-     * signature, then enforces the payload's own status/expiry claims.
+     * signature, then enforces the payload's exp claim. The license server's
+     * token carries only license_id, domain, and exp -- there is no embedded
+     * status; suspension/expiry are conveyed by the outer API response instead.
      */
     public function isValid(string $payload, string $signature): bool
     {
@@ -22,15 +24,11 @@ class TokenValidator
 
         $decoded = $this->decode($payload);
 
-        if (! isset($decoded['status'], $decoded['expires_at'])) {
+        if (! isset($decoded['exp'])) {
             return false;
         }
 
-        if ($decoded['status'] !== 'active') {
-            return false;
-        }
-
-        return ! Carbon::createFromTimestamp((int) $decoded['expires_at'])->isPast();
+        return ! Carbon::createFromTimestamp((int) $decoded['exp'])->isPast();
     }
 
     /**
@@ -65,5 +63,20 @@ class TokenValidator
     public function verifySignature(string $payload, string $signature): bool
     {
         return hash_equals($this->sign($payload), $signature);
+    }
+
+    /**
+     * Splits the license server's combined "payload.signature" token string.
+     * Returns null if the token doesn't have exactly two non-empty parts.
+     */
+    public static function split(string $token): ?array
+    {
+        $parts = explode('.', $token, 2);
+
+        if (count($parts) !== 2 || $parts[0] === '' || $parts[1] === '') {
+            return null;
+        }
+
+        return ['payload' => $parts[0], 'signature' => $parts[1]];
     }
 }

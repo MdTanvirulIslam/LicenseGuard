@@ -14,26 +14,36 @@ abstract class TestCase extends OrchestraTestCase
         $this->app->instance(Request::class, Request::create('http://'.$host.'/'));
     }
 
+    /** Builds a fake success response matching the real license server's exact contract. */
     protected function fakeServerPayload(string $domain, bool $isLocal, array $claimOverrides = []): array
     {
         $validator = new TokenValidator('test-shared-secret');
 
         $claims = array_merge([
-            'license_key' => 'TEST-LICENSE-KEY',
+            'license_id' => 1,
             'domain' => $domain,
-            'is_local' => $isLocal,
-            'status' => 'active',
-            'issued_at' => now()->subMinute()->timestamp,
-            'expires_at' => now()->addDays(30)->timestamp,
+            'exp' => now()->addHours(24)->timestamp,
         ], $claimOverrides);
 
-        $payload = base64_encode(json_encode($claims));
+        $payloadB64 = base64_encode(json_encode($claims));
 
         return [
-            'success' => true,
-            'payload' => $payload,
-            'signature' => $validator->sign($payload),
-            'status' => $claims['status'],
+            'valid' => true,
+            'token' => $payloadB64.'.'.$validator->sign($payloadB64),
+            'message' => 'License verified.',
+            'expires_at' => now()->addHours(24)->toIso8601String(),
+            'is_local' => $isLocal,
+        ];
+    }
+
+    protected function fakeFailureResponse(string $message = 'License is suspended.'): array
+    {
+        return [
+            'valid' => false,
+            'token' => null,
+            'message' => $message,
+            'expires_at' => null,
+            'is_local' => false,
         ];
     }
     protected function getPackageProviders($app): array

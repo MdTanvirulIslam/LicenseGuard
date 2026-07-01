@@ -12,7 +12,6 @@ class LicenseCache extends Model
         'domain',
         'token',
         'signature',
-        'status',
         'is_local',
         'last_checked_at',
     ];

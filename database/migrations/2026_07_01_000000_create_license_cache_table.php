@@ -13,7 +13,6 @@ return new class extends Migration
             $table->string('domain')->unique();
             $table->text('token')->nullable();
             $table->text('signature')->nullable();
-            $table->string('status')->default('unknown');
             $table->boolean('is_local')->default(false);
             $table->timestamp('last_checked_at')->nullable();
             $table->timestamps();
