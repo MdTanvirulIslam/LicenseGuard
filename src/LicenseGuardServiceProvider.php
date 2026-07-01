@@ -4,6 +4,7 @@ namespace Vendor\LicenseGuard;
 
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Support\ServiceProvider;
+use Vendor\LicenseGuard\Console\Commands\LicenseSetup;
 use Vendor\LicenseGuard\Console\Commands\LicenseStatus;
 use Vendor\LicenseGuard\Contracts\LicenseCheckerInterface;
 use Vendor\LicenseGuard\Http\Middleware\HttpLicenseGuard;
@@ -37,7 +38,7 @@ class LicenseGuardServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
         if ($this->app->runningInConsole()) {
-            $this->commands([LicenseStatus::class]);
+            $this->commands([LicenseStatus::class, LicenseSetup::class]);
 
             // Never gate console commands (migrate, queue workers, etc.) --
             // avoids a chicken-and-egg failure before license_cache exists.

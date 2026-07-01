@@ -10,9 +10,12 @@ This package is the **client side** only. It expects a separate License Manager 
 composer require vendor/license-guard
 php artisan vendor:publish --tag=license-guard-config
 php artisan migrate
+php artisan license:setup --url=... --key=... --secret=...
 ```
 
-Set these in the target app's `.env` before handover (see `.env.example` in this repo for the full block):
+`license:setup` is the recommended way to finish installation: it verifies the URL/key/secret against the License Manager live (so a typo or a mismatched key/secret pair is caught immediately, instead of surfacing later as "License validation failed") and only then writes them into `.env`, leaving every other line untouched. Omit any of `--url`/`--key`/`--secret` to be prompted for it interactively (the secret is masked). Pass `--skip-verify` to save the values without a live check (e.g. for an offline install where the two servers can't reach each other yet).
+
+If you'd rather set `.env` by hand, these are the same values `license:setup` writes (see `.env.example` in this repo for the full block):
 
 - `LICENSE_SERVER_URL`
 - `LICENSE_KEY` — unique per customer
