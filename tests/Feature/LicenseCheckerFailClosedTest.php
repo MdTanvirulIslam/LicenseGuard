@@ -111,6 +111,35 @@ class LicenseCheckerFailClosedTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_expired_cached_token_falls_back_from_verify_to_activate_and_self_heals(): void
+    {
+        $this->bindRequestHost('example.com');
+
+        // A token that was valid when cached but has since expired -- the exact
+        // production state that dead-ended every request before the fallback.
+        $expired = TokenValidator::split(
+            $this->fakeServerPayload('example.com', false, ['exp' => now()->subHour()->timestamp])['token']
+        );
+
+        LicenseCache::create([
+            'domain' => 'example.com',
+            'token' => $expired['payload'],
+            'signature' => $expired['signature'],
+            'is_local' => false,
+            'last_checked_at' => now()->subMinutes(5),
+        ]);
+
+        Http::fake([
+            '*/api/license/verify' => Http::response($this->fakeFailureResponse('Token is invalid or has been tampered with.'), 401),
+            '*/api/license/activate' => Http::response($this->fakeServerPayload('example.com', false)),
+        ]);
+
+        $this->assertTrue($this->app->make(LicenseCheckerInterface::class)->check());
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/api/license/verify'));
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/api/license/activate'));
+    }
+
     public function test_boot_license_guard_throws_when_invalid_and_not_bypassed(): void
     {
         $this->bindRequestHost('example.com');

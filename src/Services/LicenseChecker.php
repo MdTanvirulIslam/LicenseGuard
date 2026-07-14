@@ -70,6 +70,15 @@ class LicenseChecker implements LicenseCheckerInterface
             ? $this->client->activate($domain, $isLocal)
             : $this->client->verify($domain, $currentToken);
 
+        // A cached token can be rejected by /verify because it has expired
+        // (tokens are valid 24h) or the domain needs re-activation. Rather than
+        // fail closed on a still-valid license, fall back to /activate once
+        // before giving up. This is idempotent for an already-registered
+        // domain and still fails closed if the license is genuinely revoked.
+        if ($currentToken !== null && (! $response->success || $response->token === null)) {
+            $response = $this->client->activate($domain, $isLocal);
+        }
+
         // The server never returns a token on failure (suspended, expired,
         // domain limit, unreachable, etc.) -- so any missing token is
         // fail-closed, and we leave any prior known-good cache row untouched.
