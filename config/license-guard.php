@@ -19,6 +19,13 @@ return [
     // When true, all license checks short-circuit to "valid" with zero HTTP calls.
     'bypass_local' => (bool) env('LICENSE_BYPASS_LOCAL', false),
 
+    // When non-empty, exposes a web-based /license-setup/{token} page for
+    // configuring LICENSE_KEY/LICENSE_SECRET without terminal access (e.g. on
+    // shared hosting). Unset (default) means the page does not exist at all.
+    // Set this to a random string via your host's file manager to enable it,
+    // then use the page's own "disable" button to clear it again once done.
+    'setup_token' => env('LICENSE_SETUP_TOKEN', ''),
+
     // Domains treated as local for the is_local payload flag (does NOT bypass API calls).
     // Entries starting with a leading dot are suffix-matched (e.g. '.test' matches
     // 'myapp.test'); all other entries are matched exactly (case-insensitive).

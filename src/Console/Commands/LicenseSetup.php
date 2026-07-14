@@ -3,9 +3,7 @@
 namespace Vendor\LicenseGuard\Console\Commands;
 
 use Illuminate\Console\Command;
-use Vendor\LicenseGuard\Contracts\LicenseCheckerInterface;
-use Vendor\LicenseGuard\Services\LicenseClient;
-use Vendor\LicenseGuard\Support\EnvFileWriter;
+use Vendor\LicenseGuard\Services\LicenseSetupService;
 
 class LicenseSetup extends Command
 {
@@ -18,7 +16,7 @@ class LicenseSetup extends Command
 
     protected $description = 'Write LICENSE_SERVER_URL, LICENSE_KEY, and LICENSE_SECRET into .env, verifying them against the license server first.';
 
-    public function handle(EnvFileWriter $writer): int
+    public function handle(LicenseSetupService $service): int
     {
         $url = $this->option('url') ?: $this->ask('License server URL');
         $key = $this->option('key') ?: $this->ask('License key');
@@ -32,41 +30,22 @@ class LicenseSetup extends Command
             }
         }
 
-        config([
-            'license-guard.server_url' => $url,
-            'license-guard.license_key' => $key,
-            'license-guard.secret' => $secret,
-        ]);
-
-        $checker = $this->laravel->make(LicenseCheckerInterface::class);
-        $domain = $checker->currentDomain();
-        $verified = 'skipped';
-
-        if (! $this->option('skip-verify')) {
-            if (! $checker->forceVerify()) {
-                $response = $this->laravel->make(LicenseClient::class)->activate($domain, $checker->isLocalDomain());
-                $this->error("License verification failed: {$response->message}");
-                $this->line('Nothing was written to .env. Pass --skip-verify to save anyway.');
-
-                return self::FAILURE;
-            }
-
-            $verified = 'yes';
-        }
-
         $path = $this->option('path') ?: $this->laravel->environmentFilePath();
 
-        $result = $writer->write($path, [
-            'LICENSE_SERVER_URL' => $url,
-            'LICENSE_KEY' => $key,
-            'LICENSE_SECRET' => $secret,
-        ]);
+        $result = $service->apply($url, $key, $secret, $path, (bool) $this->option('skip-verify'));
+
+        if (! $result->success) {
+            $this->error("License verification failed: {$result->message}");
+            $this->line('Nothing was written to .env. Pass --skip-verify to save anyway.');
+
+            return self::FAILURE;
+        }
 
         $this->table(['Field', 'Value'], [
-            ['Domain', $domain],
-            ['Verified', $verified],
-            ['Added', $result['added'] ? implode(', ', $result['added']) : 'none'],
-            ['Updated', $result['updated'] ? implode(', ', $result['updated']) : 'none'],
+            ['Domain', $result->domain],
+            ['Verified', $result->verified],
+            ['Added', $result->added ? implode(', ', $result->added) : 'none'],
+            ['Updated', $result->updated ? implode(', ', $result->updated) : 'none'],
         ]);
 
         if ($this->laravel->configurationIsCached()) {

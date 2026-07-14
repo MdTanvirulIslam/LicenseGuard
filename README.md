@@ -25,6 +25,17 @@ If you'd rather set `.env` by hand, these are the same values `license:setup` wr
 
 **Never set `LICENSE_BYPASS_LOCAL=true` in a customer `.env`.** It is for the vendor's own development machine only — when true, all license checks short-circuit to valid with zero HTTP calls.
 
+### No terminal access? Use the web setup page
+
+`license:setup` needs SSH/terminal access, which many shared-hosting plans (e.g. cPanel without a Terminal feature) don't provide. As an alternative, the package can expose a browser-based setup page that does the same live-verify-then-write-`.env` flow:
+
+1. Using your host's file manager (cPanel's File Manager works without any terminal), add one line to `.env`: `LICENSE_SETUP_TOKEN=<a random string you choose>`. This is not a real secret — it's just a temporary key to unlock the page — so a simple random string is fine.
+2. Visit `https://your-app.example.com/license-setup/<that-token>` in a browser. You'll see the current license status (if any) and a form for the server URL, license key, and secret.
+3. Submitting the form verifies the values against the License Manager live, exactly like `license:setup`, and only writes `.env` on success.
+4. Once it works, click **Disable this setup page** on the result screen — this clears `LICENSE_SETUP_TOKEN` from `.env` again so the page stops existing until you choose to re-enable it.
+
+The page is only ever reachable when `LICENSE_SETUP_TOKEN` is set (no matching route exists at all otherwise), a wrong token 404s rather than revealing the page exists, and it stays reachable even while the current license is invalid or unconfigured — that's the situation it exists to fix.
+
 ## Configuration Reference
 
 | Key | Env var | Purpose |
@@ -35,6 +46,7 @@ If you'd rather set `.env` by hand, these are the same values `license:setup` wr
 | `check_interval_hours` | `LICENSE_CHECK_INTERVAL_HOURS` | Heartbeat throttle interval |
 | `grace_period_hours` | `LICENSE_GRACE_PERIOD_HOURS` | How long a locally-cached, valid token is trusted offline |
 | `bypass_local` | `LICENSE_BYPASS_LOCAL` | Vendor dev-machine-only bypass |
+| `setup_token` | `LICENSE_SETUP_TOKEN` | Enables the `/license-setup/{token}` web page when non-empty (see above) |
 | `local_domains` | — | Domains/suffixes treated as local for the `is_local` payload flag |
 
 ## Usage
